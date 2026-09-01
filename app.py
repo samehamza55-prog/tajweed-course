@@ -1,1090 +1,185 @@
-from flask import Flask, request, redirect, session, flash, render_template_string
-import sqlite3
+from flask import Flask, render_template_string
 import os
-from functools import wraps
-
-DB = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "tajweed.db"
-)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "tajweed-secret-2026")
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "4826")
-
-
-# =========================
-# DATABASE
-# =========================
-
-def db():
-    c = sqlite3.connect(DB)
-    c.row_factory = sqlite3.Row
-    return c
-
-
-def init_db():
-    c = db()
-
-    c.executescript("""
-    CREATE TABLE IF NOT EXISTS students(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        password TEXT UNIQUE NOT NULL,
-        active INTEGER DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS exams(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        max_score REAL DEFAULT 10,
-        sort_order INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS scores(
-        student_id INTEGER,
-        exam_id INTEGER,
-        score REAL,
-        PRIMARY KEY(student_id, exam_id)
-    );
-    """)
-
-    # الطلاب
-    if c.execute("SELECT COUNT(*) FROM students").fetchone()[0] == 0:
-        students = [
-            ("إبراهيم عبد الماجد", "241"),
-            ("آدم حمزة", "352"),
-            ("حمد عادل", "463"),
-            ("يحيى وجدي", "574"),
-            ("عبد الرحمن علاء", "685"),
-            ("تيم", "796")
-        ]
-
-        c.executemany(
-            "INSERT INTO students(name,password) VALUES(?,?)",
-            students
-        )
-
-    # الاختبار الأول
-    if c.execute("SELECT COUNT(*) FROM exams").fetchone()[0] == 0:
-        c.execute(
-            "INSERT INTO exams(title,max_score,sort_order) VALUES(?,?,?)",
-            ("الاختبار الأول", 10, 1)
-        )
-
-        sid = c.execute(
-            "SELECT id FROM students WHERE name='تيم'"
-        ).fetchone()[0]
-
-        eid = c.execute(
-            "SELECT id FROM exams LIMIT 1"
-        ).fetchone()[0]
-
-        c.execute(
-            "INSERT INTO scores VALUES(?,?,?)",
-            (sid, eid, 5)
-        )
-
-    c.commit()
-    c.close()
-
-
-# =========================
-# ADMIN SECURITY
-# =========================
-
-def admin_required(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if not session.get("admin"):
-            return redirect("/admin/login")
-        return f(*args, **kwargs)
-
-    return wrapper
-
-
-# =========================
-# DESIGN
-# =========================
-
-CSS = """
+PAGE = r"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b8f68">
+<title>بوابة نتائج دورة التجويد</title>
 <style>
-
-* {
-    box-sizing: border-box;
-}
-
-body {
-    margin: 0;
-    font-family: Arial, Tahoma, sans-serif;
-    direction: rtl;
-    background:
-        radial-gradient(circle at top right, #dff7ed, transparent 35%),
-        radial-gradient(circle at bottom left, #e8f0ff, transparent 35%),
-        #f5f7fb;
-    color: #172033;
-}
-
-.container {
-    max-width: 1050px;
-    margin: 30px auto;
-    padding: 15px;
-}
-
-.box {
-    background: rgba(255,255,255,.95);
-    border-radius: 28px;
-    padding: 30px;
-    box-shadow: 0 15px 45px rgba(20,40,80,.10);
-    border: 1px solid rgba(255,255,255,.8);
-}
-
-.login {
-    max-width: 480px;
-    margin: 70px auto;
-    text-align: center;
-}
-
-.logo {
-    width: 82px;
-    height: 82px;
-    border-radius: 24px;
-    margin: 0 auto 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 42px;
-    background: linear-gradient(135deg,#168f68,#0d6efd);
-    color: white;
-    box-shadow: 0 12px 25px rgba(13,110,253,.25);
-}
-
-h1 {
-    margin: 8px 0;
-    font-size: 30px;
-}
-
-h2 {
-    margin-top: 10px;
-}
-
-.subtitle {
-    color: #687386;
-    line-height: 1.8;
-}
-
-input, button {
-    font-family: inherit;
-}
-
-input {
-    width: 100%;
-    padding: 15px 16px;
-    border-radius: 14px;
-    border: 1px solid #d7deea;
-    background: #fbfcfe;
-    font-size: 17px;
-    outline: none;
-    margin: 7px 0;
-}
-
-input:focus {
-    border-color: #168f68;
-    box-shadow: 0 0 0 4px rgba(22,143,104,.10);
-}
-
-button {
-    border: 0;
-    padding: 14px 22px;
-    border-radius: 14px;
-    background: linear-gradient(135deg,#168f68,#0d6efd);
-    color: white;
-    font-size: 17px;
-    font-weight: bold;
-    cursor: pointer;
-    margin-top: 8px;
-}
-
-button:hover {
-    opacity: .92;
-}
-
-.btn-light {
-    display: inline-block;
-    padding: 11px 17px;
-    border-radius: 12px;
-    background: #eef2f7;
-    color: #263143;
-    text-decoration: none;
-}
-
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 25px;
-}
-
-.welcome {
-    color: #697586;
-}
-
-.stats {
-    display: grid;
-    grid-template-columns: repeat(3,1fr);
-    gap: 15px;
-    margin: 20px 0;
-}
-
-.stat {
-    padding: 20px;
-    border-radius: 20px;
-    background: linear-gradient(135deg,#f8fffc,#f1f6ff);
-    border: 1px solid #e3eaf3;
-    text-align: center;
-}
-
-.stat .number {
-    font-size: 30px;
-    font-weight: bold;
-    margin: 7px 0;
-}
-
-.exam {
-    margin: 15px 0;
-    padding: 22px;
-    border-radius: 22px;
-    background: white;
-    border: 1px solid #e5eaf1;
-    box-shadow: 0 7px 20px rgba(20,40,80,.05);
-}
-
-.exam-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-}
-
-.exam-title {
-    font-size: 19px;
-    font-weight: bold;
-}
-
-.score {
-    font-size: 26px;
-    font-weight: bold;
-    color: #168f68;
-}
-
-.progress {
-    height: 11px;
-    background: #e9eef4;
-    border-radius: 30px;
-    overflow: hidden;
-    margin-top: 15px;
-}
-
-.progress-bar {
-    height: 100%;
-    border-radius: 30px;
-    background: linear-gradient(90deg,#168f68,#0d6efd);
-}
-
-.percent {
-    margin-top: 9px;
-    color: #687386;
-    font-size: 14px;
-}
-
-.admin-card {
-    padding: 20px;
-    background: #f8fafc;
-    border-radius: 20px;
-    margin: 18px 0;
-    border: 1px solid #e4e9f0;
-}
-
-.table-wrap {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 650px;
-}
-
-th, td {
-    padding: 12px 8px;
-    border-bottom: 1px solid #e7ebf1;
-    text-align: center;
-}
-
-th {
-    background: #f5f7fa;
-}
-
-.small-input {
-    width: 85px;
-    text-align: center;
-}
-
-.flash {
-    background: #fff0f0;
-    color: #c62828;
-    padding: 12px;
-    border-radius: 12px;
-    margin-top: 15px;
-}
-
-.success {
-    background: #ecfdf5;
-    color: #087f5b;
-}
-
-.footer {
-    text-align: center;
-    color: #8a94a6;
-    margin-top: 25px;
-    font-size: 13px;
-}
-
-@media(max-width:700px) {
-
-    .container {
-        margin: 10px auto;
-        padding: 10px;
-    }
-
-    .box {
-        padding: 20px 15px;
-        border-radius: 22px;
-    }
-
-    .login {
-        margin: 35px auto;
-    }
-
-    h1 {
-        font-size: 25px;
-    }
-
-    .stats {
-        grid-template-columns: 1fr;
-    }
-
-    .header {
-        flex-direction: column;
-        align-items: stretch;
-        text-align: center;
-    }
-
-    .exam-top {
-        align-items: flex-start;
-    }
-
-}
-
+:root{--g:#07865f;--g2:#17bd87;--dark:#122a25;--muted:#71827d;--bg:#f4f8f6;--line:#e4ece8;--white:#fff;--gold:#b88728}
+*{box-sizing:border-box}
+body{margin:0;font-family:Tahoma,"Segoe UI",Arial,sans-serif;color:var(--dark);
+background:radial-gradient(circle at 5% 0,#dff8ed 0,transparent 27%),
+radial-gradient(circle at 100% 5%,#eee7ff 0,transparent 25%),var(--bg);min-height:100vh}
+.wrap{max-width:1080px;margin:auto;padding:22px 15px 50px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.brand{display:flex;align-items:center;gap:11px}.logo{width:48px;height:48px;border-radius:16px;
+display:grid;place-items:center;color:white;font-size:24px;background:linear-gradient(135deg,#056d50,#1bc791);
+box-shadow:0 12px 28px #087f5b2b}.brand b{font-size:19px}.brand small{display:block;color:var(--muted);margin-top:3px}
+.status{background:#fff;border:1px solid #dce9e3;border-radius:999px;padding:9px 13px;color:var(--g);font-size:12px;font-weight:800}
+.layout{display:grid;grid-template-columns:1.45fr .78fr;gap:17px}
+.card{background:#fffffff2;border:1px solid var(--line);border-radius:26px;padding:24px;box-shadow:0 18px 50px #163b2e0d}
+.hero{min-height:340px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;position:relative}
+.hero:before{content:"";position:absolute;width:190px;height:190px;border-radius:50%;background:#dff7ec;left:-75px;bottom:-85px}
+.kicker{color:var(--g);font-weight:900;font-size:13px}
+h1{font-size:42px;line-height:1.25;margin:9px 0 12px;max-width:700px}
+.lead{color:var(--muted);line-height:1.95;font-size:15px;max-width:690px}
+.poem{margin-top:22px;padding:17px 19px;border-radius:18px;background:linear-gradient(135deg,#f0fbf6,#fbfdfc);
+border:1px solid #d8eee5;line-height:2;color:#256552;font-size:14px}
+.poem b{display:block;color:var(--g);margin-bottom:5px}
+.login h2{margin:0 0 9px;font-size:22px}
+.hint{background:#f7faf8;border:1px solid var(--line);padding:13px;border-radius:15px;color:var(--muted);font-size:13px;line-height:1.8}
+label{display:block;font-weight:800;font-size:13px;margin:16px 0 7px}
+input{width:100%;padding:14px 15px;border:1px solid #d5e1dc;border-radius:14px;background:#fff;font-size:16px;outline:0}
+input:focus{border-color:var(--g);box-shadow:0 0 0 4px #07865f12}
+button{width:100%;border:0;border-radius:14px;padding:13px 16px;margin-top:10px;font-size:15px;font-weight:900;
+color:white;background:linear-gradient(135deg,#067b59,#16bd86);box-shadow:0 10px 22px #07865f22;cursor:pointer}
+button.secondary{background:#f0f5f2;color:#29443c;box-shadow:none}
+button.link{background:transparent;color:var(--g);box-shadow:none;font-size:13px}
+.hidden{display:none!important}
+.msg{margin-top:12px;padding:12px;border-radius:14px;background:#effaf5;color:#176b53;font-size:13px}
+.error{background:#fff0f0;color:#a33d3d}
+.student{margin-top:17px}
+.student-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.student-head h2{margin:4px 0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:17px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:19px;padding:16px}
+.stat small{color:var(--muted)}.stat strong{display:block;font-size:27px;margin-top:5px}
+.green{color:var(--g)}.blue{color:#3f72d5}.gold{color:var(--gold)}
+.section-title{margin:23px 0 11px;font-size:21px}
+.result{border:1px solid var(--line);border-radius:20px;padding:16px;margin-top:11px;background:#fff}
+.result-top{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.result-title{font-weight:900}.date{color:var(--muted);font-size:12px;margin-top:5px}
+.score{font-size:27px;font-weight:900;color:var(--g);white-space:nowrap}
+.bar{height:9px;border-radius:99px;background:#eaf0ed;overflow:hidden;margin:15px 0 8px}
+.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#07865f,#22c993)}
+.meta{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:12px}
+.badge{background:#eaf8f2;color:var(--g);padding:6px 9px;border-radius:999px;font-weight:900}
+.footer{text-align:center;color:#82918c;font-size:12px;margin-top:23px}
+.admin{margin-top:17px}.admin-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.admin-table{overflow:auto;margin-top:12px}table{width:100%;border-collapse:separate;border-spacing:0;min-width:650px}
+th,td{padding:10px;border-bottom:1px solid var(--line);text-align:center;font-size:13px}th{background:#f7faf8;color:#61716c;font-size:12px}
+.admin input{padding:8px;font-size:13px}
+.modal{position:fixed;inset:0;background:#09251d88;display:grid;place-items:center;padding:16px;z-index:10}
+.modal .card{width:min(450px,100%);background:#fff}
+@media(max-width:800px){.layout{grid-template-columns:1fr}h1{font-size:32px}.hero{min-height:auto}.stats{grid-template-columns:1fr}.top{align-items:flex-start}.status{display:none}}
 </style>
-"""
+</head>
+<body>
+<main class="wrap">
+<header class="top">
+  <div class="brand"><div class="logo">✦</div><div><b>دورة التجويد</b><small>بوابة النتائج والمتابعة</small></div></div>
+  <div class="status">● النظام جاهز</div>
+</header>
 
+<section class="layout">
+  <section class="card hero">
+    <div class="kicker">مرحباً بك في بوابة دورة التجويد</div>
+    <h1>تعلّم، أتقن، وارتقِ في تلاوتك</h1>
+    <div class="lead">تابع نتائجك بسهولة، وشاهد تقدّمك في الاختبارات بواجهة رايقة وسريعة ومناسبة للجوال.</div>
+    <div class="poem">
+      <b>🌿 أبيات جميلة في طريق التعلّم</b>
+      تعلّم كتابَ اللهِ وامضِ بثقةٍ، فالعلمُ نورٌ والقلوبُ منارُ<br>
+      واجعلْ تلاوتَكَ كلَّ يومٍ عادةً، فبها يطيبُ الوقتُ والأعمارُ
+    </div>
+  </section>
 
-# =========================
-# STUDENT LOGIN
-# =========================
+  <section class="card login">
+    <h2>🔐 دخول الطالب</h2>
+    <div class="hint">أدخل كلمة المرور الخاصة بك، وستظهر نتائجك أنت فقط.</div>
+    <label>كلمة المرور</label>
+    <input id="pw" type="password" inputmode="numeric" autocomplete="off" placeholder="أدخل كلمة المرور"
+           onkeydown="if(event.key==='Enter')studentLogin()">
+    <button onclick="studentLogin()">عرض نتائجي ←</button>
+    <button class="link" onclick="openAdmin()">⚙ دخول المسؤول</button>
+    <div id="msg"></div>
+  </section>
+</section>
 
-LOGIN = CSS + """
-<div class="container">
+<section id="student" class="card student hidden"></section>
+<section id="admin" class="card admin hidden"></section>
+<div class="footer">وفقك الله في علمك، وبارك لك في وقتك وجهدك 🌿</div>
+</main>
 
-<div class="box login">
-
-<div class="logo">📖</div>
-
-<h1>بوابة نتائج دورة التجويد</h1>
-
-<p class="subtitle">
-مرحباً بك 🌿<br>
-أدخل كلمة المرور الخاصة بك للاطلاع على نتائجك
-</p>
-
-<form method="post">
-
-<input
-name="password"
-inputmode="numeric"
-placeholder="🔐 كلمة المرور"
-autocomplete="off"
-autofocus
-required
->
-
-<button type="submit">
-عرض نتائجي 📊
-</button>
-
-</form>
-
-{% for m in get_flashed_messages() %}
-<div class="flash">{{m}}</div>
-{% endfor %}
-
-<div style="margin-top:20px">
-<a class="btn-light" href="/admin/login">
-👨‍💼 دخول المسؤول
-</a>
+<div id="modal" class="modal hidden">
+ <div class="card">
+   <h2>⚙ دخول المسؤول</h2>
+   <label>رمز المسؤول</label>
+   <input id="apw" type="password" placeholder="رمز المسؤول" onkeydown="if(event.key==='Enter')adminLogin()">
+   <button onclick="adminLogin()">دخول لوحة التحكم</button>
+   <button class="secondary" onclick="closeAdmin()">إلغاء</button>
+   <div id="amsg"></div>
+ </div>
 </div>
 
-<div class="footer">
-دورة التجويد • بوابة النتائج
-</div>
-
-</div>
-</div>
-"""
-
-
-# =========================
-# STUDENT RESULTS
-# =========================
-
-RESULT = CSS + """
-<div class="container">
-
-<div class="box">
-
-<div class="header">
-
-<div>
-<h1>السلام عليكم 🌿</h1>
-<div class="welcome">
-نتائج الطالب: <strong>{{s.name}}</strong>
-</div>
-</div>
-
-<a class="btn-light" href="/logout">
-خروج
-</a>
-
-</div>
-
-
-<div class="stats">
-
-<div class="stat">
-<div>عدد الاختبارات</div>
-<div class="number">{{total_exams}}</div>
-</div>
-
-<div class="stat">
-<div>المجموع</div>
-<div class="number">{{total_score}} / {{total_max}}</div>
-</div>
-
-<div class="stat">
-<div>النسبة</div>
-<div class="number">{{overall}}%</div>
-</div>
-
-</div>
-
-
-<h2>📚 نتائج الاختبارات</h2>
-
-{% for r in rows %}
-
-<div class="exam">
-
-<div class="exam-top">
-
-<div class="exam-title">
-{{r.title}}
-</div>
-
-{% if r.score is none %}
-
-<div style="color:#8a94a6">
-لم تُرصد
-</div>
-
-{% else %}
-
-<div class="score">
-{{r.score}} / {{r.max_score}}
-</div>
-
-{% endif %}
-
-</div>
-
-
-{% if r.score is not none %}
-
-{% set p = ((r.score / r.max_score) * 100) if r.max_score else 0 %}
-
-<div class="progress">
-<div class="progress-bar" style="width:{{p}}%"></div>
-</div>
-
-<div class="percent">
-النتيجة: {{p|round(1)}}%
-</div>
-
-{% endif %}
-
-</div>
-
-{% endfor %}
-
-
-{% if not rows %}
-
-<div class="exam" style="text-align:center">
-لا توجد اختبارات حتى الآن.
-</div>
-
-{% endif %}
-
-
-<div class="footer">
-وفقكم الله وبارك في علمكم 🌸
-</div>
-
-</div>
-</div>
-"""
-
-
-# =========================
-# ADMIN LOGIN
-# =========================
-
-ADMIN_LOGIN = CSS + """
-<div class="container">
-
-<div class="box login">
-
-<div class="logo">👨‍💼</div>
-
-<h1>لوحة المسؤول</h1>
-
-<p class="subtitle">
-أدخل كلمة مرور المسؤول
-</p>
-
-<form method="post">
-
-<input
-type="password"
-name="password"
-placeholder="🔐 كلمة مرور المسؤول"
-required
->
-
-<button type="submit">
-دخول لوحة التحكم
-</button>
-
-</form>
-
-{% for m in get_flashed_messages() %}
-<div class="flash">{{m}}</div>
-{% endfor %}
-
-<br>
-
-<a class="btn-light" href="/">
-العودة للطلاب
-</a>
-
-</div>
-</div>
-"""
-
-
-# =========================
-# ADMIN DASHBOARD
-# =========================
-
-ADMIN = CSS + """
-<div class="container">
-
-<div class="box">
-
-<div class="header">
-
-<div>
-<h1>👨‍💼 لوحة تحكم دورة التجويد</h1>
-<div class="welcome">
-إدارة الطلاب والاختبارات والنتائج
-</div>
-</div>
-
-<a class="btn-light" href="/admin/logout">
-خروج
-</a>
-
-</div>
-
-
-<div class="admin-card">
-
-<h2>➕ إضافة اختبار جديد</h2>
-
-<form method="post" action="/admin/add-exam">
-
-<input
-name="title"
-placeholder="اسم الاختبار، مثال: الاختبار الثاني"
-required
->
-
-<input
-name="max_score"
-type="number"
-step="0.5"
-min="1"
-value="10"
-placeholder="العلامة الكاملة"
-required
->
-
-<button>
-إضافة الاختبار
-</button>
-
-</form>
-
-</div>
-
-
-<div class="admin-card">
-
-<h2>📊 إدخال العلامات</h2>
-
-<form method="post" action="/admin/save">
-
-<div class="table-wrap">
-
-<table>
-
-<tr>
-
-<th>الطالب</th>
-
-{% for e in exams %}
-
-<th>
-{{e.title}}
-<br>
-<small>من {{e.max_score}}</small>
-</th>
-
-{% endfor %}
-
-</tr>
-
-
-{% for s in students %}
-
-<tr>
-
-<td>
-<strong>{{s.name}}</strong>
-</td>
-
-{% for e in exams %}
-
-<td>
-
-<input
-class="small-input"
-name="score_{{s.id}}_{{e.id}}"
-value="{{scores.get((s.id,e.id),'')}}"
-type="number"
-min="0"
-max="{{e.max_score}}"
-step="0.5"
->
-
-</td>
-
-{% endfor %}
-
-</tr>
-
-{% endfor %}
-
-</table>
-
-</div>
-
-<button>
-💾 حفظ جميع العلامات
-</button>
-
-</form>
-
-</div>
-
-
-<div class="admin-card">
-
-<h2>👨‍🎓 بيانات الطلاب</h2>
-
-{% for s in students %}
-
-<form
-class="admin-card"
-method="post"
-action="/admin/student/{{s.id}}"
->
-
-<strong>{{s.name}}</strong>
-
-<input
-name="name"
-value="{{s.name}}"
-placeholder="اسم الطالب"
-required
->
-
-<input
-name="password"
-value="{{s.password}}"
-placeholder="كلمة المرور"
-required
->
-
-<button>
-حفظ بيانات الطالب
-</button>
-
-</form>
-
-{% endfor %}
-
-</div>
-
-
-<div class="footer">
-بوابة نتائج دورة التجويد
-</div>
-
-</div>
-</div>
-"""
-
-
-# =========================
-# STUDENT LOGIN ROUTE
-# =========================
-
-@app.route("/", methods=["GET", "POST"])
-def login():
-
-    if request.method == "POST":
-
-        password = request.form.get("password", "").strip()
-
-        c = db()
-
-        s = c.execute(
-            """
-            SELECT * FROM students
-            WHERE password=? AND active=1
-            """,
-            (password,)
-        ).fetchone()
-
-        c.close()
-
-        if s:
-            session.clear()
-            session["student_id"] = s["id"]
-            return redirect("/result")
-
-        flash("كلمة المرور غير صحيحة ❌")
-
-    return render_template_string(LOGIN)
-
-
-# =========================
-# RESULTS
-# =========================
-
-@app.route("/result")
-def result():
-
-    if not session.get("student_id"):
-        return redirect("/")
-
-    c = db()
-
-    s = c.execute(
-        "SELECT * FROM students WHERE id=?",
-        (session["student_id"],)
-    ).fetchone()
-
-    rows = c.execute(
-        """
-        SELECT
-            e.title,
-            e.max_score,
-            sc.score
-        FROM exams e
-        LEFT JOIN scores sc
-            ON sc.exam_id=e.id
-            AND sc.student_id=?
-        ORDER BY e.sort_order, e.id
-        """,
-        (session["student_id"],)
-    ).fetchall()
-
-    c.close()
-
-    total_score = 0
-    total_max = 0
-
-    for r in rows:
-        if r["score"] is not None:
-            total_score += r["score"]
-
-        total_max += r["max_score"]
-
-    overall = round(
-        (total_score / total_max) * 100,
-        1
-    ) if total_max else 0
-
-    return render_template_string(
-        RESULT,
-        s=s,
-        rows=rows,
-        total_exams=len(rows),
-        total_score=total_score,
-        total_max=total_max,
-        overall=overall
-    )
-
-
-# =========================
-# STUDENT LOGOUT
-# =========================
-
-@app.route("/logout")
-def logout():
-
-    session.clear()
-
-    return redirect("/")
-
-
-# =========================
-# ADMIN LOGIN
-# =========================
-
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-
-    if request.method == "POST":
-
-        password = request.form.get("password", "")
-
-        if password == ADMIN_PASSWORD:
-
-            session["admin"] = True
-
-            return redirect("/admin")
-
-        flash("كلمة مرور المسؤول غير صحيحة ❌")
-
-    return render_template_string(ADMIN_LOGIN)
-
-
-# =========================
-# ADMIN DASHBOARD
-# =========================
-
-@app.route("/admin")
-@admin_required
-def admin():
-
-    c = db()
-
-    students = c.execute(
-        "SELECT * FROM students ORDER BY id"
-    ).fetchall()
-
-    exams = c.execute(
-        "SELECT * FROM exams ORDER BY sort_order,id"
-    ).fetchall()
-
-    scores = {
-        (r["student_id"], r["exam_id"]): r["score"]
-        for r in c.execute("SELECT * FROM scores")
-    }
-
-    c.close()
-
-    return render_template_string(
-        ADMIN,
-        students=students,
-        exams=exams,
-        scores=scores
-    )
-
-
-# =========================
-# ADD EXAM
-# =========================
-
-@app.post("/admin/add-exam")
-@admin_required
-def add_exam():
-
-    title = request.form.get("title", "").strip()
-
-    try:
-        max_score = float(
-            request.form.get("max_score", "10")
-        )
-    except:
-        max_score = 10
-
-    if not title:
-        return redirect("/admin")
-
-    c = db()
-
-    order = c.execute(
-        "SELECT COALESCE(MAX(sort_order),0)+1 FROM exams"
-    ).fetchone()[0]
-
-    c.execute(
-        """
-        INSERT INTO exams(title,max_score,sort_order)
-        VALUES(?,?,?)
-        """,
-        (title, max_score, order)
-    )
-
-    c.commit()
-    c.close()
-
-    return redirect("/admin")
-
-
-# =========================
-# SAVE SCORES
-# =========================
-
-@app.post("/admin/save")
-@admin_required
-def save():
-
-    c = db()
-
-    for key, value in request.form.items():
-
-        if key.startswith("score_") and value.strip() != "":
-
-            try:
-                _, sid, eid = key.split("_")
-
-                score = float(value)
-
-                exam = c.execute(
-                    "SELECT max_score FROM exams WHERE id=?",
-                    (eid,)
-                ).fetchone()
-
-                if exam and 0 <= score <= exam["max_score"]:
-
-                    c.execute(
-                        """
-                        INSERT INTO scores
-                        VALUES(?,?,?)
-                        ON CONFLICT(student_id,exam_id)
-                        DO UPDATE SET score=excluded.score
-                        """,
-                        (
-                            int(sid),
-                            int(eid),
-                            score
-                        )
-                    )
-
-            except:
-                pass
-
-    c.commit()
-    c.close()
-
-    return redirect("/admin")
-
-
-# =========================
-# UPDATE STUDENT
-# =========================
-
-@app.post("/admin/student/<int:sid>")
-@admin_required
-def student(sid):
-
-    name = request.form.get("name", "").strip()
-    password = request.form.get("password", "").strip()
-
-    if name and password:
-
-        c = db()
-
-        try:
-
-            c.execute(
-                """
-                UPDATE students
-                SET name=?, password=?
-                WHERE id=?
-                """,
-                (name, password, sid)
-            )
-
-            c.commit()
-
-        except sqlite3.IntegrityError:
-            pass
-
-        c.close()
-
-    return redirect("/admin")
-
-
-# =========================
-# ADMIN LOGOUT
-# =========================
-
-@app.route("/admin/logout")
-def admin_logout():
-
-    session.pop("admin", None)
-
-    return redirect("/")
-
-
-# =========================
-# START
-# =========================
-
-init_db()
+<script>
+const INITIAL=[
+{id:'S001',name:'إبراهيم عبد الماجد',password:'241',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:9.5,max:10}]},
+{id:'S002',name:'آدم حمزة',password:'352',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:7.5,max:10}]},
+{id:'S003',name:'حمد عادل',password:'463',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:9.5,max:10}]},
+{id:'S004',name:'يحيى وجدي',password:'574',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:6,max:10}]},
+{id:'S005',name:'عبد الرحمن علاء',password:'685',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:5,max:10}]},
+{id:'S006',name:'تيم',password:'796',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:5,max:10}]}
+];
+const ADMIN='4826';
+let state=JSON.parse(localStorage.getItem('tajweed_state')||'null')||INITIAL;
+const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+function save(){localStorage.setItem('tajweed_state',JSON.stringify(state))}
+function studentLogin(){
+ const pw=document.getElementById('pw').value.trim(),m=document.getElementById('msg');
+ const s=state.find(x=>x.password===pw);
+ if(!s){m.innerHTML='<div class="msg error">كلمة المرور غير صحيحة. حاول مرة أخرى.</div>';return}
+ const total=s.scores.reduce((a,x)=>a+Number(x.score||0),0);
+ const max=s.scores.reduce((a,x)=>a+Number(x.max||0),0);
+ const pct=max?Math.round(total/max*100):0;
+ const results=s.scores.map(x=>{
+   const p=x.max?Math.round(x.score/x.max*100):0;
+   const label=p>=90?'ممتاز جداً':p>=75?'ممتاز':p>=60?'جيد جداً':p>=50?'جيد':'استمر بالتدريب';
+   return `<div class="result"><div class="result-top"><div><div class="result-title">📘 ${esc(x.name)}</div><div class="date">📅 ${esc(x.date||'بدون تاريخ')}</div></div><div class="score">${x.score} / ${x.max}</div></div><div class="bar"><i style="width:${p}%"></i></div><div class="meta"><span>النسبة <b class="green">${p}%</b></span><span class="badge">${label}</span></div></div>`
+ }).join('');
+ document.getElementById('student').classList.remove('hidden');
+ document.getElementById('student').innerHTML=`<div class="student-head"><div><div class="kicker">السلام عليكم ورحمة الله وبركاته</div><h2>نتائج الطالب: <span class="green">${esc(s.name)}</span></h2></div><button class="secondary" onclick="logoutStudent()" style="width:auto">خروج</button></div>
+ <div class="stats"><div class="stat"><small>النسبة الإجمالية</small><strong class="green">${pct}%</strong></div><div class="stat"><small>المجموع الكلي</small><strong class="blue">${total} / ${max}</strong></div><div class="stat"><small>عدد الاختبارات</small><strong class="gold">${s.scores.length}</strong></div></div>
+ <div class="section-title">نتائج الاختبارات</div>${results}
+ <div class="msg">✨ أحسنت، استمر في المراجعة والتدريب؛ فالإتقان يأتي مع الصبر والمداومة.</div>`;
+ document.getElementById('pw').value='';document.getElementById('student').scrollIntoView({behavior:'smooth'});
+}
+function logoutStudent(){document.getElementById('student').classList.add('hidden');window.scrollTo({top:0,behavior:'smooth'})}
+function openAdmin(){document.getElementById('modal').classList.remove('hidden');document.getElementById('apw').focus()}
+function closeAdmin(){document.getElementById('modal').classList.add('hidden');document.getElementById('apw').value='';document.getElementById('amsg').innerHTML=''}
+function adminLogin(){if(document.getElementById('apw').value!==ADMIN){document.getElementById('amsg').innerHTML='<div class="msg error">رمز المسؤول غير صحيح.</div>';return}closeAdmin();renderAdmin()}
+function renderAdmin(){
+ let exams=state[0]?.scores?.map((x,i)=>({i,name:x.name,date:x.date,max:x.max}))||[];
+ let rows=state.map((s,i)=>`<tr><td>${esc(s.id)}</td><td><b>${esc(s.name)}</b></td><td><input id="p${i}" value="${esc(s.password)}"></td>${exams.map(e=>`<td><input id="s${i}_${e.i}" type="number" min="0" max="${e.max}" step="0.5" value="${s.scores[e.i]?.score??0}"></td>`).join('')}</tr>`).join('');
+ document.getElementById('admin').classList.remove('hidden');
+ document.getElementById('admin').innerHTML=`<div class="admin-head"><div><div class="kicker">لوحة التحكم</div><h2>إدارة الطلاب والاختبارات والنتائج</h2></div><button class="secondary" onclick="document.getElementById('admin').classList.add('hidden')" style="width:auto">إغلاق</button></div>
+ <div class="msg">✓ تم تحميل البيانات بنجاح — عدّل العلامات ثم اضغط حفظ.</div>
+ <div class="stats"><div class="stat"><small>الطلاب</small><strong class="blue">${state.length}</strong></div><div class="stat"><small>الاختبارات</small><strong class="gold">${exams.length}</strong></div><div class="stat"><small>الحالة</small><strong class="green" style="font-size:18px">جاهز</strong></div></div>
+ <div class="admin-table"><table><thead><tr><th>الرقم</th><th>الطالب</th><th>كلمة المرور</th>${exams.map(e=>`<th>${esc(e.name)}<br>من ${e.max}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+ <button onclick="saveAdmin()">💾 حفظ جميع التعديلات</button>
+ <div class="card" style="margin-top:17px"><h2>➕ إضافة اختبار جديد</h2><label>اسم الاختبار</label><input id="newName" placeholder="مثال: الاختبار الثاني"><label>التاريخ</label><input id="newDate" type="date"><label>العلامة الكاملة</label><input id="newMax" type="number" value="10" min="1"><button onclick="addExam()">إضافة الاختبار للجميع</button></div>`;
+ document.getElementById('admin').scrollIntoView({behavior:'smooth'});
+}
+function saveAdmin(){
+ let exams=state[0]?.scores?.length||0;
+ state.forEach((s,i)=>{s.password=document.getElementById('p'+i).value.trim();for(let j=0;j<exams;j++){let v=document.getElementById(`s${i}_${j}`);if(v)s.scores[j].score=Math.max(0,Number(v.value)||0)}});save();alert('تم حفظ جميع التعديلات بنجاح ✓');renderAdmin()
+}
+function addExam(){
+ const name=document.getElementById('newName').value.trim()||`الاختبار ${state[0].scores.length+1}`;
+ const date=document.getElementById('newDate').value;const max=Math.max(1,Number(document.getElementById('newMax').value)||10);
+ state.forEach(s=>s.scores.push({name,date,score:0,max}));save();renderAdmin();alert('تمت إضافة الاختبار للجميع ✓')
+}
+</script>
+</body></html>"""
+
+@app.get("/")
+def home():
+    return render_template_string(PAGE)
 
 if __name__ == "__main__":
-
-    app.run(
-        host="0.0.0.0",
-        port=int(
-            os.environ.get("PORT", 5000)
-        )
-    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
