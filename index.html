@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بوابة نتائج دورة التجويد</title>
+<style>
+:root{--navy:#173b5f;--blue:#286b9f;--gold:#d4a84f;--ink:#172033;--muted:#68788c;--bg:#f4f7fb}
+*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:radial-gradient(circle at top,#eaf3fb 0,#f7fafc 45%,#eef5f1 100%);color:var(--ink);min-height:100vh}.wrap{max-width:900px;margin:auto;padding:22px 14px 40px}
+.card{background:#fff;border:1px solid #e5ebf2;border-radius:26px;box-shadow:0 16px 45px rgba(27,55,82,.10);padding:24px;margin:14px 0}.hero{position:relative;overflow:hidden;text-align:center;padding:34px 22px;background:linear-gradient(135deg,#173b5f,#286b9f);color:#fff;border:0}.hero:after{content:"";position:absolute;width:180px;height:180px;border:1px solid rgba(255,255,255,.18);border-radius:50%;left:-70px;top:-80px}.logo{width:74px;height:74px;margin:0 auto 13px;border-radius:23px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:36px}.hero h1{margin:0 0 7px;font-size:28px}.hero .sub{color:#dcebf8}.tag{display:inline-block;margin-top:14px;padding:7px 12px;border-radius:999px;background:rgba(212,168,79,.18);border:1px solid rgba(212,168,79,.45);color:#ffe5a2;font-size:12px}
+.login-title{font-size:21px;margin:0 0 7px}.hint{background:#f6f9fc;border:1px solid #e8eef5;border-radius:15px;padding:13px;margin:15px 0;color:#526176;font-size:14px}label{display:block;font-weight:bold;margin:14px 0 7px}input{width:100%;padding:14px;border:1px solid #ccd6e3;border-radius:13px;font-size:17px;outline:none;background:#fff}input:focus{border-color:#286b9f;box-shadow:0 0 0 3px rgba(40,107,159,.10)}button{width:100%;border:0;border-radius:13px;padding:13px 17px;background:var(--navy);color:#fff;font-size:16px;font-weight:bold;cursor:pointer;margin-top:10px}.button2{background:#eef3f8;color:#334155}.hidden{display:none}.msg{padding:16px;border-radius:17px;background:#f6f9fc;margin-top:16px}.error{background:#fff1f1;color:#a12828}.success{background:#f1faf4}.studentName{text-align:center;font-size:23px;font-weight:bold;margin-bottom:4px}.small{text-align:center;color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:15px 0}.stat{background:#fff;border:1px solid #e7edf3;border-radius:17px;padding:13px;text-align:center}.stat b{display:block;font-size:22px;color:var(--navy)}.stat span{font-size:12px;color:var(--muted)}table{width:100%;border-collapse:collapse;margin-top:12px;background:#fff;overflow:hidden}th,td{padding:11px 7px;border-bottom:1px solid #e6ebf1;text-align:center}th{background:#f0f4f8;color:#30445b}.badge{display:inline-block;padding:4px 9px;border-radius:999px;background:#e8f5eb;color:#22613a;font-size:12px}.progress{height:9px;background:#e8edf2;border-radius:99px;overflow:hidden;margin-top:8px}.progress i{display:block;height:100%;background:linear-gradient(90deg,#286b9f,#d4a84f);border-radius:99px}.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.admin-table{overflow:auto}.admin-table input{font-size:14px;padding:9px}.footer{text-align:center;color:#7b8798;font-size:12px;margin:22px 0}.printOnly{display:none}
+@media(max-width:620px){.stats{grid-template-columns:1fr}.card{padding:18px}.hero h1{font-size:24px}th,td{font-size:12px;padding:9px 4px}}
+@media print{body{background:#fff}.wrap{max-width:none;padding:0}.hero,#studentLogin,#admin,.footer,.noPrint{display:none!important}.card{box-shadow:none;border:0}.printOnly{display:block;text-align:center}.msg{border:1px solid #ddd}}
+</style></head>
+<body><main class="wrap">
+<section class="card hero" id="home"><div class="logo">📖</div><h1>بوابة نتائج دورة التجويد</h1><div class="sub">نتائجك محفوظة وخصوصيتك أولًا</div><div class="tag">بوابة خاصة بالمشاركين</div></section>
+
+<section class="card" id="studentLogin">
+<h2 class="login-title">🔐 دخول الطالب</h2>
+<div class="hint">أدخل <b>كلمة المرور الخاصة بك</b> فقط. ستظهر لك نتائجك أنت دون نتائج بقية الطلاب.</div>
+<label for="spw">كلمة المرور</label><input id="spw" type="password" inputmode="numeric" autocomplete="off" placeholder="أدخل كلمة المرور" onkeydown="if(event.key==='Enter')studentLogin()">
+<button onclick="studentLogin()">عرض نتيجتي ✨</button><button class="button2 noPrint" onclick="openAdmin()">دخول المسؤول ⚙️</button>
+<div id="studentOut"></div></section>
+
+<section class="card hidden" id="admin">
+<h2 class="login-title">⚙️ لوحة المسؤول</h2><div class="hint">من هنا يمكنك تعديل العلامات وكلمات المرور وإضافة اختبارات جديدة.</div>
+<label for="apw">رمز المسؤول</label><input id="apw" type="password" placeholder="رمز المسؤول" onkeydown="if(event.key==='Enter')adminLogin()">
+<button onclick="adminLogin()">دخول لوحة التحكم</button><div id="adminOut"></div><button class="button2" onclick="backHome()">رجوع لدخول الطلاب</button></section>
+<div class="footer">© بوابة نتائج دورة التجويد • نسخة مرتبة وسهلة للطباعة</div>
+</main>
+<script>
+const INITIAL=[
+{id:'S001',name:'إبراهيم عبد الماجد',password:'241',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:9.5,max:10}]},
+{id:'S002',name:'آدم حمزة',password:'352',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:7.5,max:10}]},
+{id:'S003',name:'حمد عادل',password:'463',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:9.5,max:10}]},
+{id:'S004',name:'يحيى وجدي',password:'574',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:6,max:10}]},
+{id:'S005',name:'عبد الرحمن علاء',password:'685',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:5,max:10}]},
+{id:'S006',name:'تيم',password:'796',scores:[{name:'الاختبار الأول',date:'2026-08-17',score:5,max:10}]}
+];
+const ADMIN='4826';let state=JSON.parse(localStorage.getItem('tajweed_state')||'null')||INITIAL;
+function save(){localStorage.setItem('tajweed_state',JSON.stringify(state))}
+function studentLogin(){const pw=document.getElementById('spw').value.trim(),o=document.getElementById('studentOut'),s=state.find(x=>x.password===pw);if(!s){o.innerHTML='<div class="msg error">كلمة المرور غير صحيحة. حاول مرة أخرى.</div>';return}
+let total=0,maxTotal=0; s.scores.forEach(x=>{total+=Number(x.score)||0;maxTotal+=Number(x.max)||0});let avg=maxTotal?(total/maxTotal*100):0;
+const rows=s.scores.map(x=>{let p=x.max?((x.score/x.max)*100):0;return `<tr><td>${escapeHtml(x.name)}</td><td>${x.date||'-'}</td><td><b>${x.score}</b></td><td>${x.max}</td><td><span class="badge">${p.toFixed(0)}%</span></td></tr>`}).join('');
+o.innerHTML=`<div class="msg success"><div class="studentName">أهلًا ${escapeHtml(s.name)} 👋</div><div class="small">هذه صفحتك الخاصة</div><div class="stats"><div class="stat"><b>${s.scores.length}</b><span>عدد الاختبارات</span></div><div class="stat"><b>${avg.toFixed(0)}%</b><span>المتوسط العام</span></div><div class="stat"><b>${s.scores.length?s.scores[s.scores.length-1].score:'-'}</b><span>آخر علامة</span></div></div><table><tr><th>الاختبار</th><th>التاريخ</th><th>علامتك</th><th>من</th><th>النسبة</th></tr>${rows}</table><button class="noPrint" onclick="window.print()">🖨️ طباعة النتيجة</button><button class="button2 noPrint" onclick="logoutStudent()">خروج</button></div>`;
+document.getElementById('spw').value=''}
+function logoutStudent(){document.getElementById('studentOut').innerHTML='';document.getElementById('spw').value=''}
+function openAdmin(){document.getElementById('studentLogin').classList.add('hidden');document.getElementById('admin').classList.remove('hidden');document.getElementById('apw').focus()}
+function backHome(){document.getElementById('admin').classList.add('hidden');document.getElementById('studentLogin').classList.remove('hidden');document.getElementById('adminOut').innerHTML='';document.getElementById('apw').value=''}
+function adminLogin(){if(document.getElementById('apw').value!==ADMIN){document.getElementById('adminOut').innerHTML='<div class="msg error">رمز المسؤول غير صحيح.</div>';return}renderAdmin()}
+function renderAdmin(){let rows=state.map((s,i)=>`<tr><td>${s.id}</td><td>${escapeHtml(s.name)}</td><td><input id="p${i}" value="${escapeHtml(s.password)}"></td><td><input id="n${i}" type="number" min="0" step="0.5" value="${s.scores[0]?.score??''}"></td></tr>`).join('');
+document.getElementById('adminOut').innerHTML=`<div class="msg"><h3>إدارة الطلاب والعلامات</h3><div class="admin-table"><table><tr><th>الرقم</th><th>الطالب</th><th>كلمة المرور</th><th>الاختبار الأول</th></tr>${rows}</table></div><h3>إضافة اختبار جديد</h3><div class="admin-grid"><div><label>اسم الاختبار</label><input id="newExam" placeholder="الاختبار الثاني"></div><div><label>التاريخ</label><input id="newDate" type="date"></div><div><label>العلامة الكاملة</label><input id="newMax" type="number" min="1" value="10"></div></div><button onclick="addExam()">➕ إضافة الاختبار للجميع</button><button onclick="saveAdmin()">💾 حفظ التعديلات</button><button class="button2" onclick="exportData()">📦 نسخة احتياطية</button></div>`}
+function saveAdmin(){state.forEach((s,i)=>{s.password=document.getElementById('p'+i).value.trim();let v=document.getElementById('n'+i).value;s.scores[0].score=v===''?0:Number(v)});save();alert('تم حفظ التعديلات بنجاح.');renderAdmin()}
+function addExam(){const name=document.getElementById('newExam').value.trim()||('اختبار '+(state[0].scores.length+1)),date=document.getElementById('newDate').value,max=Number(document.getElementById('newMax').value)||10;state.forEach(s=>s.scores.push({name,date,score:0,max}));save();renderAdmin();alert('تمت إضافة الاختبار للجميع.')}
+function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tajweed_backup.json';a.click();URL.revokeObjectURL(a.href)}
+function escapeHtml(v){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+</script></body></html>
